@@ -2,12 +2,12 @@
 # this run on travis
 duplicata = `cat features/*.feature | grep Scenario | sort | uniq -cd`.strip
 if duplicata.to_s.empty?
-  puts 'no duplicata great job'
+  log 'no duplicata great job'
   exit 0
 else
-  puts '+++++++++++++++++++++++++++++++'
-  puts 'found duplicatas Scenario names!'
-  puts 'please remove them'
-  puts duplicata
+  log '+++++++++++++++++++++++++++++++'
+  log 'found duplicatas Scenario names!'
+  log 'please remove them'
+  log duplicata
   exit 1
 end
