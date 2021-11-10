@@ -192,12 +192,12 @@ public class SaltSSHService {
     public <R> Map<String, Result<R>> callSyncSSH(LocalCall<R> call, MinionList target, Optional<String> extraFileRefs)
             throws SaltException {
         // Using custom LocalCall timeout if included in the payload
-        Optional<Integer> sshTimeout = call.getPayload().containsKey("timeout") ?
-                    Optional.ofNullable((Integer) call.getPayload().get("timeout")) :
-                    getSshPushTimeout();
-        SaltRoster roster = prepareSaltRoster(target, sshTimeout);
+        // Optional<Integer> sshTimeout = call.getPayload().containsKey("timeout") ?
+        //            Optional.ofNullable((Integer) call.getPayload().get("timeout")) :
+        //            getSshPushTimeout();
+        // SaltRoster roster = prepareSaltRoster(target, sshTimeout);
         return unwrapSSHReturn(
-                callSyncSSHInternal(call, target, roster, false, isSudoUser(getSSHUser()), extraFileRefs));
+                callSyncSSHInternal(call, target, Optional.empty(), false, isSudoUser(getSSHUser()), extraFileRefs));
     }
 
     /**
@@ -301,7 +301,7 @@ public class SaltSSHService {
                 CompletableFuture.supplyAsync(() -> {
                     try {
                         return unwrapSSHReturn(
-                                callSyncSSHInternal(call, target, roster,
+                                callSyncSSHInternal(call, target, Optional.of(roster),
                                         false, isSudoUser(getSSHUser()),
                                         extraFilerefs));
                     }
@@ -521,7 +521,7 @@ public class SaltSSHService {
             Map<String, Result<SSHResult<Map<String, ApplyResult>>>> result =
                     callSyncSSHInternal(call,
                             new MinionList(parameters.getHost()),
-                            roster,
+                            Optional.of(roster),
                             parameters.isIgnoreHostKeys(),
                             isSudoUser(parameters.getUser()));
             return result.get(parameters.getHost());
@@ -625,27 +625,36 @@ public class SaltSSHService {
      * @return result of the call
      */
     private <T> Map<String, Result<SSHResult<T>>> callSyncSSHInternal(LocalCall<T> call,
-            SSHTarget target, SaltRoster roster, boolean ignoreHostKeys, boolean sudo)
+            SSHTarget target, Optional<SaltRoster> roster, boolean ignoreHostKeys, boolean sudo)
             throws SaltException {
         return callSyncSSHInternal(call, target, roster, ignoreHostKeys, sudo, Optional.empty());
     }
 
 
     private <T> Map<String, Result<SSHResult<T>>> callSyncSSHInternal(LocalCall<T> call,
-            SSHTarget target, SaltRoster roster, boolean ignoreHostKeys, boolean sudo, Optional<String> extraFilerefs)
+            SSHTarget target, Optional<SaltRoster> roster, boolean ignoreHostKeys, boolean sudo, Optional<String> extraFilerefs)
             throws SaltException {
         if (!(target instanceof MinionList || target instanceof Glob)) {
             throw new UnsupportedOperationException("Only MinionList and Glob supported.");
         }
 
         try {
-            final Path rosterPath = roster.persistInTempFile();
+            final Path rosterPath;
+            if (roster.isPresent()) {
+                rosterPath = roster.get().persistInTempFile();
+            }
+            else {
+                rosterPath = null;
+            }
+
             SaltSSHConfig.Builder sshConfigBuilder = new SaltSSHConfig.Builder()
                     .ignoreHostKeys(ignoreHostKeys)
-                    .rosterFile(rosterPath.getFileName().toString())
                     .priv(SSH_KEY_PATH)
                     .sudo(sudo)
                     .refreshCache(true);
+            roster.ifPresentOrElse(
+                    r -> sshConfigBuilder.rosterFile(rosterPath.getFileName().toString()),
+                    () -> sshConfigBuilder.roster("uyuni"));
             extraFilerefs.ifPresent(filerefs -> sshConfigBuilder.extraFilerefs(filerefs));
             SaltSSHConfig sshConfig = sshConfigBuilder.build();
 
@@ -685,7 +694,7 @@ public class SaltSSHService {
                 return unwrapSSHReturn(
                         callSyncSSHInternal(Match.glob(target),
                                 new Glob(target),
-                                roster,
+                                Optional.empty(),
                                 false,
                                 isSudoUser(getSSHUser())));
             }
